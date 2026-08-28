@@ -404,6 +404,7 @@ static void menu_device()
 		return;
 	}
 	EMU* emu = g_emu; (void)emu;
+#ifdef USE_DRIVE_TYPE
 	if(ImGui::BeginMenu("Boot Device")) {
 		radio_item("5/3-inch 2D",  &config.drive_type, 0, true);
 		radio_item("5/3-inch 2DD", &config.drive_type, 1, true);
@@ -412,11 +413,14 @@ static void menu_device()
 		radio_item("HARD DISK",    &config.drive_type, 7, true);
 		ImGui::EndMenu();
 	}
+#endif
+#ifdef USE_KEYBOARD_TYPE
 	if(ImGui::BeginMenu("Keyboard")) {
 		radio_item("Keyboard Mode A", &config.keyboard_type, 0, true);
 		radio_item("Keyboard Mode B", &config.keyboard_type, 1, true);
 		ImGui::EndMenu();
 	}
+#endif
 	if(ImGui::BeginMenu("Sound")) {
 		radio_item("PSG",        &config.sound_type, 0, false);
 		radio_item("CZ-8BS1 x1", &config.sound_type, 1, false);

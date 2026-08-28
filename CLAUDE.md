@@ -10,8 +10,9 @@ macOS/SDL2 port of the Sharp X1turbo emulator from the Common Source Code Projec
 
 ```sh
 brew install sdl2          # one-time prerequisite
-make                       # -> build/ex1turbo
-make clean                 # wipe build/
+make                       # all three variants -> build/ex1, build/ex1turbo, build/ex1turboz
+make x1turbo               # single variant (x1 | x1turbo | x1turboz)
+make clean                 # remove objects + binaries only; ROMs in build/ survive
 cd build && ./ex1turbo     # ROMs must be in the CWD (build/ already has them)
 ./ex1turbo disk.d88        # boot with floppy in drive 0; drag-drop also mounts files
 ```
@@ -28,7 +29,7 @@ Three layers, joined by `emu.h`/`emu.cpp`:
 2. **VM layer** (`src/vm/`) — device emulation. Generic chips at the top level (`z80.cpp`, `mb8877.cpp` FDC, `hd46505.cpp` CRTC, `ay_3_891x.cpp` PSG, `ym2151.cpp`, `fmgen/` FM synth...), machine-specific wiring in `src/vm/x1/` (`x1.cpp` is the machine definition connecting devices via the event/IO bus).
 3. **OSD layer** — platform backend behind the `OSD` class in `osd.h`. The original win32/DirectX one lives in `src/win32/` (reference only, not built); the mac port is `src/sdl/` (`osd_screen/sound/input/console/printer/midi.cpp`, `main.cpp` event loop, `gui.cpp` Dear ImGui menu/status bar). Dear ImGui 1.92.9 is vendored in `src/sdl/imgui/`.
 
-Machine and backend selection is purely by preprocessor defines set in the Makefile: `-D_X1TURBO -D_USE_SDL -D_RGB888`. The Makefile's `CORE_SRCS` is the x1turbo source list transcribed from `vc++2017/x1turbo.vcxproj` minus the win32 OSD — adding a core file means adding it there.
+Machine and backend selection is purely by preprocessor defines: `-D_USE_SDL -D_RGB888` plus one machine macro per variant (`-D_X1`, `-D_X1TURBO`, or `-D_X1TURBOZ`; see `src/vm/x1/x1.h` for what each enables — `_X1TURBO_FEATURE` gates the turbo hardware). The Makefile builds each variant into its own object dir (`build/<variant>/`), sharing only the ImGui objects; `CORE_SRCS` is transcribed from `vc++2017/x1turbo.vcxproj` minus the win32 OSD (plain x1 drops `z80dma.cpp`, matching `x1.vcxproj`) — adding a core file means adding it there. Machine-conditional code in `src/sdl/` must use the feature macros from `x1.h` (`USE_HARD_DISK`, `USE_DRIVE_TYPE`, `USE_KEYBOARD_TYPE`, ...), not the machine macros. Plain X1 needs its own `IPLROM.X1` (4KB) — the turbo IPL in `build/` won't boot it; the UI still comes up.
 
 ### SDL port specifics
 

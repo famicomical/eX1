@@ -433,10 +433,15 @@ static void menu_device()
 		ImGui::EndMenu();
 	}
 	if(ImGui::BeginMenu("Display")) {
+#ifdef _X1TURBO_FEATURE
+		// monitor_type feeds the turbo dipswitch (port 0x1ff0); the original X1 has no 400-line mode
 		radio_item("High Resolution", &config.monitor_type, 0, true);
 		radio_item("Standard",        &config.monitor_type, 1, true);
 #ifdef USE_SCANLINE
 		ImGui::Separator();
+#endif
+#endif
+#ifdef USE_SCANLINE
 		if(ImGui::MenuItem("Scanline", NULL, config.scan_line)) { config.scan_line = !config.scan_line; g_emu->update_config(); }
 #endif
 		ImGui::EndMenu();

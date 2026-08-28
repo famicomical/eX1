@@ -1,97 +1,84 @@
-# eX1 (Sharp X1turbo) macOS/SDL2 port — session handoff
+# eX1 (Sharp X1 family) macOS/SDL2 port — session handoff
 
-## How to build & run
+Updated 2026-08-29. Previous handoff (menu/UI HiDPI bugs) is fully resolved;
+see git history and the notes at the bottom.
+
+## Current state: WORKS
+
+All three variants build, boot the IPL ("IPL is looking for a program from FD0"),
+and run with the full ImGui menu/status bar. Build is GREEN, repo is git-tracked.
+
 ```sh
-cd /Users/rmb/Desktop/gamestuff/eX1/source
-make                       # -> build/ex1turbo  (needs: brew install sdl2)
-make clean                 # wipe build/
-cd build && ./ex1turbo     # ROMs already in build/ (IPL.ROM, FNT*.X1, KANJI2.ROM->KANJI.ROM symlink)
-./ex1turbo disk.d88        # boot with a floppy; or drag-drop onto window
+make                # all three -> build/ex1, build/ex1turbo, build/ex1turboz
+make x1turbo        # one variant (x1 | x1turbo | x1turboz)
+make app            # -> build/eX1.app, eX1turbo.app, eX1turboZ.app (needs ImageMagick)
+make clean          # objects/binaries/bundles only — ROMs in build/ survive
 ```
-Headless screenshot for verification: `EX1_AUTOSHOT=/tmp/x.bmp ./ex1turbo`
-(captures the emulator framebuffer after 300 frames; note: SDL_RenderReadPixels does
-NOT capture the ImGui overlay, so a black-looking shot doesn't mean the UI is broken —
-the live window renders the menus fine.)
 
-## Current state: WORKS, with 2 open UI bugs
-The emulator boots and runs (IPL → "looking for a program from FD0"). The Dear ImGui
-menu bar + status bar are fully implemented and render live. Build is GREEN.
+Headless verification: `EX1_AUTOSHOT=/tmp/x.bmp ./ex1turbo` (framebuffer after
+300 frames; captures the ImGui overlay too).
 
-### Implemented this session (the menu/UI clone)
-- Vendored Dear ImGui 1.92.9 in `src/sdl/imgui/` (core + imgui_impl_sdl2 + imgui_impl_sdlrenderer2).
-- `src/sdl/gui.cpp` / `gui.h`: full menu bar cloning the Windows menus —
-  Control, FD0–3, CMT, HD0–3, Device (Boot/Keyboard/Sound/Display/Printer/Serial), Sound,
-  Screen(Capture). "Host" menu intentionally omitted (per user). All handlers wired to
-  `emu->`/`config` per the win32 WM_COMMAND spec, with checkmarks/radios/enable-state.
-  File dialogs use native macOS panels via `osascript` (choose file / choose file name).
-  Status bar: FD: + HD: per-drive activity LEDs (off/red/green from
-  `emu->is_floppy_disk_accessed()` + `floppy_disk_indicator_color()` / `is_hard_disk_accessed()`)
-  and `CMT: <emu->get_tape_message(0)>`.
-- `src/sdl/main.cpp`: ImGui event pump, keyboard gated by `gui_want_keyboard()`,
-  `render_frame()` composites emulator + GUI; window grown to fit menu+status bars.
-- `src/sdl/osd_screen.cpp`: split `draw_screen()` into `update_screen_texture()` +
-  `render_screen_to(x,y,w,h)` so the GUI can overlay. Added `get_renderer()`,
-  `get_texture()`, `get_vm_screen_width/height()` to `osd.h`.
+## What was done in this session block (see `git log`)
 
-## RESOLVED (this session)
-Both UI bugs below were one root cause: `SDL_RenderSetLogicalSize(renderer, ...)` in
-`osd_screen.cpp` (was line ~49). It locks the renderer to 640x480 logical; the window grows
-to 640x530 for the menu+status bars, so the renderer letterboxes+centers all output (push
-down ~25pt ≈ menu bar height) AND double-scales against the manual hx/hy HiDPI math in
-`render_frame`. That single hidden transform produced BOTH the 2x overflow ("scale wrong")
-and the menu hitbox-shifted-down ("mouse lag") symptoms. FIX: deleted that one line.
-`render_frame`'s existing manual compositing is correct once the transform is gone.
-Verified via OS window screengrab: X1 fills width (no overflow), menu bar flush under title
-bar, menu items respond at their drawn location. The handoff's planned ImGui::Image rewrite
-was rejected: over-engineered and would not have fixed the hitbox (it never removed the
-logical-size call). PRESENTVSYNC left on (lag was a symptom of the offset, not real latency).
+1. **Git snapshot** (`0bd2a9b`…): repo initialized, tracking ONLY port work —
+   `Makefile`, `mkapp.sh`, docs, `src/sdl/`, and the 3 edited core files.
+   Upstream CSCP tree deliberately untracked; `build/` ignored.
+2. **Verified against pristine upstream** (Takeda's source.7z, same 11/9/2025
+   version): only `common.cpp`, `common.h`, `emu.h` differ from upstream —
+   `core-vs-upstream-20251109.patch` (committed) is the exact diff. Everything
+   else the port adds lives in `src/sdl/`.
+3. **Multi-variant build** (`7346cbc`): Makefile builds x1 / x1turbo / x1turboz
+   via per-variant object dirs (`build/<variant>/`) + machine macro
+   (`-D_X1`/`-D_X1TURBO`/`-D_X1TURBOZ`); plain x1 drops `z80dma.cpp` per
+   upstream x1.vcxproj; ImGui objects shared. gui.cpp menus needed
+   `USE_DRIVE_TYPE`/`USE_KEYBOARD_TYPE` guards (turbo-only config fields).
+4. **Plain-X1 menu fix** (`913ffb8`): High Resolution/Standard radios gated on
+   `_X1TURBO_FEATURE` — `config.monitor_type` only feeds the turbo dipswitch
+   (port 0x1ff0); upstream's `USE_MONITOR_TYPE` is defined unconditionally so
+   it can't be the guard.
+5. **.app bundling** (`c0854d6`): `mkapp.sh` + `make app`. Icons generated from
+   `src/res/<variant>.ico` (32x32) → `.icns` via ImageMagick nearest-neighbor
+   upscale. Info.plist sets `NSHighResolutionCapable` (required for Retina in a
+   bundle) + `.d88`/`.cmt` document types. Ad-hoc codesigned.
+   **Path fix in `common.cpp`**: `get_application_path()` detects a bundle
+   (`_NSGetExecutablePath` contains `.app/Contents/MacOS/`) and uses
+   `~/Library/Application Support/eX1/<binary name>/` for ROMs+config
+   (Finder CWD is `/`); terminal launches keep CWD behavior.
 
-### Follow-up: HiDPI menu/status sizing (also fixed)
-After deleting the logical-size call, ImGui rendered tiny in the top-left quarter (menu
-shrunk, status bar stuck mid-window). Cause: the SDLRenderer2 backend emits vertices in
-POINTS and relies on SDL_RenderSetScale to reach the 2x framebuffer. FIX in
-`main.cpp render_frame`: call `SDL_RenderSetScale(r, out/win, out/win)` each frame and
-composite the emulator in POINTS (dropped the hx/hy point->pixel math). Everything now lives
-in one coordinate space (window points; SDL scales to pixels). Verified against the Windows
-reference: full-size menu bar, status bar at the bottom, X1 aspect-fit.
+## ROMs (copyrighted, never committed)
 
-## OLD BUG NOTES (kept for context; both fixed above)
-### 1. X1 display scale is wrong (HiDPI) — PRIORITY
-Window uses `SDL_WINDOW_ALLOW_HIGHDPI` (needed so ImGui mouse hit-testing is accurate on
-Retina). But `render_frame()` in `main.cpp` manually aspect-fits + scales the emulator rect
-from ImGui points → renderer pixels (`hx/hy = out/win`). That math double-scales: the X1
-is drawn ~2x and overflows. Debug confirmed: win=640x530, rout=1280x1060, fbscale=2,
-emulator dest computed 1280x960 but renders too large on screen.
+- `build/` has a working turbo set: IPL.ROM (32KB), FNT0808/0816/1616.X1,
+  KANJI2.ROM + `KANJI.ROM` symlink, and `IPLROM.X1` (4KB plain-X1 IPL, copied
+  from `~/Desktop/gamestuff/retropc/HXC Sharp X1/アプリ/２ｄからD88/mameroms/x1/ipl.x1`).
+  Backup source set: `~/Desktop/gamestuff/Xmil106RSV0190/DumpListEditorVer082/ex1/`.
+- Bundled apps read from `~/Library/Application Support/eX1/<binary name>/` —
+  only `ex1turbo/` is populated so far; `ex1/` and `ex1turboz/` need ROMs
+  copied in before their .apps show anything.
+- Plain X1 needs the 4KB `IPLROM.X1` (loader tries it first, falls back to
+  `IPL.ROM` but reads only `IPL_ROM_FILE_SIZE`, so the turbo 32KB image won't boot it).
 
-**Planned clean fix (was mid-implementation):** stop manual compositing. Render the X1
-as an `ImGui::Image` inside a borderless full-area ImGui window between the menu and status
-bars. ImGui then handles layout + HiDPI uniformly for emulator/menu/status — no manual
-point↔pixel math. `OSD::get_texture()` is already added for this.
-Steps:
-  - In `gui.cpp`, add `gui_draw_emulator()` called inside `gui_build()` after the menu bar:
-    create a no-decoration/no-pad window at (0, menu_h) sized to fill down to the status bar;
-    aspect-fit using `vm_window_width_aspect:height_aspect` (640:480); draw
-    `ImGui::Image((ImTextureID)(intptr_t)emu->get_osd()->get_texture(), size, uv0, uv1)`
-    where uv1 = (vm_window_width/vm_screen_width, vm_window_height/vm_screen_height).
-    (texture is vm_screen_width×height; visible region is vm_window_width×height.)
-  - In `main.cpp render_frame()`: delete the hx/hy pixel math and the `osd->render_screen_to(...)`
-    call. Just: `osd->update_screen_texture(); gui_build(); SDL_RenderClear; gui_render(); present;`
-  - `get_texture()` returns the SDL_Texture*; sdlrenderer2 backend uses SDL_Texture* as ImTextureID.
+## Known rough edges / possible next steps
 
-### 2. Mouse is laggy
-Renderer created with `SDL_RENDERER_PRESENTVSYNC` AND the loop also `SDL_Delay`s to hit the
-frame interval → ~1–2 frames of stacked latency. Fix: drop `SDL_RENDERER_PRESENTVSYNC` in
-`osd_screen.cpp` (renderer creation, ~line 44) and rely on the existing frame-timing
-`SDL_Delay` in `main.cpp`. Re-test responsiveness.
+- Binaries link MacPorts SDL2 (`/opt/local/lib/libSDL2-2.0.0.dylib`) — CLAUDE.md
+  says brew but sdl2-config resolves to MacPorts on this machine. Fine locally;
+  a distributable .app would need the dylib bundled+`install_name_tool`'d or
+  SDL2 linked statically.
+- Distribution plan (discussed, not built): publish repo + builder script
+  (`make app`) rather than shipping .apps — avoids Gatekeeper/notarization,
+  ROMs can't ship anyway, GPLv2+ (CSCP license, readme.txt §License) satisfied.
+- .app niceties not done: no "drop ROMs here" first-run message (blank screen
+  if ROM dir is empty), no Dock-drop file-open verification, version string
+  hardcoded 2025.11.9 in mkapp.sh.
+- IDE clangd flags diagnostics in `src/sdl/` (missing SDL.h etc.) — noise; it
+  lacks the build's include paths/defines. The real build is clean.
 
-## Notes / gotchas
-- Source files are ISO-8859/CRLF: use `grep -a`, `LC_ALL=C` to avoid multibyte errors.
-- Win-isms are shimmed in `src/sdl/compat/` (io.h, malloc.h, windefs.h). Core portability
-  edits live in `common.h`, `common.cpp`, `emu.h` (see git-less notes in `README_SDL_MAC.md`).
-- The full win32→action spec for every menu ID is encoded directly in `gui.cpp`; the
-  source of truth is `src/win32/winmain.cpp` (WM_COMMAND ~674-1115, macros 1143-1389,
-  update_control_menu 1555, update_tape_menu 1756, status bar 2594/2652).
-- After the two fixes: remove leftover `EX1_AUTOSHOT` capture hook in `main.cpp` if desired
-  (harmless), and consider nearest-neighbor texture scaling for crisp X1 pixels
-  (`SDL_SetTextureScaleMode(texture, SDL_ScaleModeNearest)` in `update_screen_texture`).
-```
+## Layout / gotchas (also in CLAUDE.md)
+
+- Machine-conditional code in `src/sdl/` must use feature macros from
+  `src/vm/x1/x1.h` (`USE_HARD_DISK`, `USE_SCANLINE`, ...) or
+  `_X1TURBO_FEATURE` — never bare machine macros where a feature macro exists.
+- Core files ISO-8859 + CRLF: `grep -a`, `LC_ALL=C`; patch byte-exact (this
+  session used a python script to keep CRLF intact in common.cpp).
+- Menu behavior source of truth: `src/win32/winmain.cpp` (WM_COMMAND ~674–1115).
+- Do NOT reintroduce `SDL_RenderSetLogicalSize` in `osd_screen.cpp`
+  (historic double-scale/hitbox bug — see git history of this file).

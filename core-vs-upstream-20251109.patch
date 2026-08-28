@@ -1,6 +1,6 @@
 --- /private/tmp/claude-501/-Users-rmb-Desktop-gamestuff-eX1-source/18fe0e55-f5c0-4bba-b3cf-9eb89d969c33/scratchpad/upstream/source/src/common.cpp	2025-12-08 09:00:00
-+++ src/common.cpp	2026-06-28 18:39:29
-@@ -29,6 +29,12 @@
++++ src/common.cpp	2026-08-29 00:44:24
+@@ -29,6 +29,15 @@
  	#pragma comment(lib, "shlwapi.lib")
  #else
  	#include <time.h>
@@ -10,20 +10,22 @@
 +	#include <string>
 +	#include <algorithm>
 +	#include <cctype>
++	#if defined(__APPLE__)
++		#include <mach-o/dyld.h>
++	#endif
  #endif
  #include <math.h>
  #include "common.h"
-@@ -290,8 +296,28 @@
- 	} else {
+@@ -291,7 +300,27 @@
  		return b;
  	}
-+}
+ }
 +
 +#if !defined(_WIN32)
 +size_t DLL_PREFIX max(size_t a, size_t b)
 +{
 +	return (a > b) ? a : b;
- }
++}
 +
 +size_t DLL_PREFIX min(size_t a, size_t b)
 +{
@@ -42,7 +44,7 @@
  
  #ifndef SUPPORT_SECURE_FUNCTIONS
  //errno_t my_tfopen_s(FILE** pFile, const _TCHAR *filename, const _TCHAR *mode)
-@@ -362,7 +388,11 @@
+@@ -362,7 +391,11 @@
  {
  	va_list ap;
  	va_start(ap, format);
@@ -54,7 +56,7 @@
  	va_end(ap);
  	return result;
  }
-@@ -1023,7 +1053,7 @@
+@@ -1023,7 +1056,7 @@
  		} else {
  			my_tcscpy_s(app_path, _MAX_PATH, _T(".\\"));
  		}
@@ -63,7 +65,7 @@
  #if defined(Q_OS_WIN)
  		std::string delim = "\\";
  #else
-@@ -1031,10 +1061,20 @@
+@@ -1031,11 +1064,39 @@
  #endif
  		std::string csppath = cpp_homedir + "CommonSourceCodeProject" + delim ;
  		_my_mkdir(csppath);
@@ -73,8 +75,26 @@
  		_my_mkdir(cpath);
  		strncpy(app_path, cpath.c_str(), _MAX_PATH - 1);
 +#else
-+		// generic POSIX (SDL): load resources relative to the working dir
-+		if(getcwd(app_path, _MAX_PATH) == NULL) {
++		// generic POSIX (SDL): resources live in the working dir when run
++		// from a terminal; a Finder-launched .app bundle uses
++		// ~/Library/Application Support/eX1/<binary name>/ instead
++		bool resolved = false;
++#if defined(__APPLE__)
++		char exe_path[_MAX_PATH];
++		uint32_t exe_size = _MAX_PATH;
++		if(_NSGetExecutablePath(exe_path, &exe_size) == 0 && strstr(exe_path, ".app/Contents/MacOS/") != NULL) {
++			const char *home = getenv("HOME");
++			const char *exe_name = strrchr(exe_path, '/') + 1;
++			if(home != NULL && home[0] == '/') {
++				snprintf(app_path, _MAX_PATH, "%s/Library/Application Support/eX1", home);
++				mkdir(app_path, 0755);
++				snprintf(app_path, _MAX_PATH, "%s/Library/Application Support/eX1/%s", home, exe_name);
++				mkdir(app_path, 0755);
++				resolved = true;
++			}
++		}
+ #endif
++		if(!resolved && getcwd(app_path, _MAX_PATH) == NULL) {
 +			my_strcpy_s(app_path, _MAX_PATH, ".");
 +		}
 +		size_t plen = strlen(app_path);
@@ -82,9 +102,10 @@
 +			app_path[plen] = '/';
 +			app_path[plen + 1] = '\0';
 +		}
- #endif
++#endif
  		initialized = true;
  	}
+ 	return (const _TCHAR *)app_path;
 --- /private/tmp/claude-501/-Users-rmb-Desktop-gamestuff-eX1-source/18fe0e55-f5c0-4bba-b3cf-9eb89d969c33/scratchpad/upstream/source/src/common.h	2025-12-08 09:00:00
 +++ src/common.h	2026-06-28 18:39:18
 @@ -800,6 +800,19 @@

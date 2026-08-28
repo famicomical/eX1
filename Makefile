@@ -108,8 +108,14 @@ IMGUI_SRCS := \
 
 IMGUI_OBJS := $(patsubst $(SRC)/%.cpp,$(BUILD)/imgui-obj/%.o,$(IMGUI_SRCS))
 
-.PHONY: all clean $(VARIANTS)
+.PHONY: all clean app $(VARIANTS)
 all: $(VARIANTS)
+
+# .app bundles (see mkapp.sh; needs ImageMagick for icon conversion)
+app: all
+	./mkapp.sh x1
+	./mkapp.sh x1turbo
+	./mkapp.sh x1turboz
 
 # one rule set per variant: objects under build/<variant>/, binary build/e<variant>
 define VARIANT_template
@@ -133,4 +139,4 @@ $(BUILD)/imgui-obj/%.o: $(SRC)/%.cpp
 
 # clean removes only what make produced; ROMs/disks living in build/ survive
 clean:
-	rm -rf $(addprefix $(BUILD)/,$(VARIANTS) imgui-obj) $(addprefix $(BUILD)/e,$(VARIANTS))
+	rm -rf $(addprefix $(BUILD)/,$(VARIANTS) imgui-obj icons) $(addprefix $(BUILD)/e,$(VARIANTS)) $(BUILD)/*.app

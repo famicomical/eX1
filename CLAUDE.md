@@ -12,6 +12,7 @@ macOS/SDL2 port of the Sharp X1turbo emulator from the Common Source Code Projec
 brew install sdl2          # one-time prerequisite
 make                       # all three variants -> build/ex1, build/ex1turbo, build/ex1turboz
 make x1turbo               # single variant (x1 | x1turbo | x1turboz)
+make app                   # wrap each binary into build/<name>.app (needs ImageMagick; see mkapp.sh)
 make clean                 # remove objects + binaries only; ROMs in build/ survive
 cd build && ./ex1turbo     # ROMs must be in the CWD (build/ already has them)
 ./ex1turbo disk.d88        # boot with floppy in drive 0; drag-drop also mounts files
@@ -19,7 +20,7 @@ cd build && ./ex1turbo     # ROMs must be in the CWD (build/ already has them)
 
 - No tests or lint. Verification is running the emulator: it should boot the IPL and print "looking for a program from FD0".
 - Headless verification: `EX1_AUTOSHOT=/tmp/x.bmp ./ex1turbo` captures the framebuffer after 300 frames. Note `SDL_RenderReadPixels` does NOT capture the ImGui overlay — a black shot doesn't mean the UI is broken.
-- ROMs (IPL.ROM, FNT*.X1, KANJI.ROM, etc.) are copyrighted, loaded from the working directory at launch. Config saves to `x1turbo.ini` in the CWD on exit.
+- ROMs (IPL.ROM, FNT*.X1, KANJI.ROM, etc.) are copyrighted, loaded from the working directory at launch. Config saves to `x1turbo.ini` in the CWD on exit. Exception: a binary running from inside a `.app` bundle uses `~/Library/Application Support/eX1/<binary name>/` for ROMs and config instead (see `get_application_path()` in `src/common.cpp`).
 
 ## Architecture
 

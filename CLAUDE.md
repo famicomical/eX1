@@ -40,5 +40,5 @@ Machine and backend selection is purely by preprocessor defines set in the Makef
 ## Gotchas
 
 - Core source files are ISO-8859 encoded with CRLF line endings. Use `grep -a` and `LC_ALL=C` to avoid multibyte errors; preserve the existing encoding/line endings when editing them. New `src/sdl/` files are ordinary UTF-8/LF.
-- Not a git repository.
+- Git tracks only the port files (Makefile, docs, `src/sdl/`, edited core files); the upstream CSCP tree is intentionally untracked and `build/` is ignored.
 - `vc++2008/`, `vc++2017/`, `src/win32/`, `src/vm/<other machines>/`, and `tool/` are upstream baggage kept for reference — don't build or modify them for the mac port.

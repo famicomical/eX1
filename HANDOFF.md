@@ -41,9 +41,11 @@ Headless verification: `EX1_AUTOSHOT=/tmp/x.bmp ./ex1turbo` (framebuffer after
    upscale. Info.plist sets `NSHighResolutionCapable` (required for Retina in a
    bundle) + `.d88`/`.cmt` document types. Ad-hoc codesigned.
    **Path fix in `common.cpp`**: `get_application_path()` detects a bundle
-   (`_NSGetExecutablePath` contains `.app/Contents/MacOS/`) and uses
-   `~/Library/Application Support/eX1/<binary name>/` for ROMs+config
-   (Finder CWD is `/`); terminal launches keep CWD behavior.
+   (`_NSGetExecutablePath` contains `.app/Contents/MacOS/`) and uses the
+   shared `~/Library/Application Support/eX1/` for ROMs+config (Finder CWD
+   is `/`); terminal launches keep CWD behavior. ROM filenames are distinct
+   per machine (IPLROM.X1 4KB vs IPL.ROM 32KB) and .ini names differ, so one
+   dir serves all variants.
 
 ## ROMs (copyrighted, never committed)
 
@@ -51,9 +53,9 @@ Headless verification: `EX1_AUTOSHOT=/tmp/x.bmp ./ex1turbo` (framebuffer after
   KANJI2.ROM + `KANJI.ROM` symlink, and `IPLROM.X1` (4KB plain-X1 IPL, copied
   from `~/Desktop/gamestuff/retropc/HXC Sharp X1/アプリ/２ｄからD88/mameroms/x1/ipl.x1`).
   Backup source set: `~/Desktop/gamestuff/Xmil106RSV0190/DumpListEditorVer082/ex1/`.
-- Bundled apps read from `~/Library/Application Support/eX1/<binary name>/` —
-  only `ex1turbo/` is populated so far; `ex1/` and `ex1turboz/` need ROMs
-  copied in before their .apps show anything.
+- Bundled apps read from the shared `~/Library/Application Support/eX1/`
+  (flattened from per-binary subdirs after they proved confusing); it holds a
+  full set including both IPLs, and all three .apps boot from it.
 - Plain X1 needs the 4KB `IPLROM.X1` (loader tries it first, falls back to
   `IPL.ROM` but reads only `IPL_ROM_FILE_SIZE`, so the turbo 32KB image won't boot it).
 
@@ -69,6 +71,8 @@ Headless verification: `EX1_AUTOSHOT=/tmp/x.bmp ./ex1turbo` (framebuffer after
 - .app niceties not done: no "drop ROMs here" first-run message (blank screen
   if ROM dir is empty), no Dock-drop file-open verification, version string
   hardcoded 2025.11.9 in mkapp.sh.
+- Plain-X1 menu guards visually confirmed in the bundle build (no Boot
+  Device/Keyboard, Display = Scanline only).
 - IDE clangd flags diagnostics in `src/sdl/` (missing SDL.h etc.) — noise; it
   lacks the build's include paths/defines. The real build is clean.
 

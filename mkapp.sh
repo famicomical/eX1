@@ -5,8 +5,8 @@
 #
 # Needs the binary already built (make <variant>), ImageMagick (`magick`,
 # for nearest-neighbor icon upscaling) and iconutil (ships with macOS).
-# The bundled app loads ROMs and saves config in
-# ~/Library/Application Support/eX1/<binary name>/ (created on first run).
+# Bundled apps load ROMs and save config in the shared
+# ~/Library/Application Support/eX1/ (created on first run).
 set -e
 
 variant=$1

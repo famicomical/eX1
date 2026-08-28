@@ -1070,19 +1070,17 @@ const _TCHAR *DLL_PREFIX get_application_path()
 		strncpy(app_path, cpath.c_str(), _MAX_PATH - 1);
 #else
 		// generic POSIX (SDL): resources live in the working dir when run
-		// from a terminal; a Finder-launched .app bundle uses
-		// ~/Library/Application Support/eX1/<binary name>/ instead
+		// from a terminal; a Finder-launched .app bundle uses the shared
+		// ~/Library/Application Support/eX1/ instead (ROMs common to all
+		// variants; per-variant .ini names don't clash)
 		bool resolved = false;
 #if defined(__APPLE__)
 		char exe_path[_MAX_PATH];
 		uint32_t exe_size = _MAX_PATH;
 		if(_NSGetExecutablePath(exe_path, &exe_size) == 0 && strstr(exe_path, ".app/Contents/MacOS/") != NULL) {
 			const char *home = getenv("HOME");
-			const char *exe_name = strrchr(exe_path, '/') + 1;
 			if(home != NULL && home[0] == '/') {
 				snprintf(app_path, _MAX_PATH, "%s/Library/Application Support/eX1", home);
-				mkdir(app_path, 0755);
-				snprintf(app_path, _MAX_PATH, "%s/Library/Application Support/eX1/%s", home, exe_name);
 				mkdir(app_path, 0755);
 				resolved = true;
 			}

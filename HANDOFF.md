@@ -1,7 +1,7 @@
 # eX1 (Sharp X1 family) macOS/SDL2 port — session handoff
 
-Updated 2026-08-29. Previous handoff (menu/UI HiDPI bugs) is fully resolved;
-see git history and the notes at the bottom.
+Updated 2026-08-29 (publishing-prep session). Previous handoff (menu/UI HiDPI
+bugs) is fully resolved; see git history and the notes at the bottom.
 
 ## Current state: WORKS
 
@@ -59,17 +59,33 @@ Headless verification: `EX1_AUTOSHOT=/tmp/x.bmp ./ex1turbo` (framebuffer after
 - Plain X1 needs the 4KB `IPLROM.X1` (loader tries it first, falls back to
   `IPL.ROM` but reads only `IPL_ROM_FILE_SIZE`, so the turbo 32KB image won't boot it).
 
+## Publishing prep (2026-08-29 session)
+
+- **SDL2 bundled into .apps**: mkapp.sh copies the linked libSDL2 into
+  `Contents/Frameworks/`, re-points the binary (`install_name_tool`), signs
+  the dylib. Verified: `otool -L` shows `@executable_path/...`, app runs.
+- **fetch_upstream.sh**: downloads Takeda's source.7z, extracts (needs
+  7zz/7z/7za), rsyncs into the repo excluding all git-tracked files (patched
+  core stays). Pinned sha256 warns (doesn't fail) if upstream updates the
+  archive in place. End-to-end verified: fresh clone -> fetch -> make -> run.
+- **README.md** (front page: build/ROMs/usage/changes/license) +
+  **COPYING.txt** (GPLv2 — note: root `LICENSE` file impossible, collides
+  with upstream `license/` dir on case-insensitive APFS).
+- **Missing-ROM screen** (gui.cpp `rom_screen()`): overlays when no usable
+  IPL at startup (wrong-size IPL.ROM counts as unusable — catches 32KB turbo
+  image on plain X1). Checklist of ROM files rescanned 1/sec, Open Folder
+  button, Restart re-execs the process (ROMs only load at VM construction),
+  Quit pushes SDL_QUIT. Armed via `gui_rom_check()` in main.cpp.
+- core-vs-upstream patch regenerated with clean a/ b/ paths (old one leaked
+  absolute scratchpad paths).
+
 ## Known rough edges / possible next steps
 
-- Binaries link MacPorts SDL2 (`/opt/local/lib/libSDL2-2.0.0.dylib`) — CLAUDE.md
-  says brew but sdl2-config resolves to MacPorts on this machine. Fine locally;
-  a distributable .app would need the dylib bundled+`install_name_tool`'d or
-  SDL2 linked statically.
-- Distribution plan (discussed, not built): publish repo + builder script
-  (`make app`) rather than shipping .apps — avoids Gatekeeper/notarization,
-  ROMs can't ship anyway, GPLv2+ (CSCP license, readme.txt §License) satisfied.
-- .app niceties not done: no "drop ROMs here" first-run message (blank screen
-  if ROM dir is empty), no Dock-drop file-open verification, version string
+- GitHub repo not yet created/pushed (no remote). Branch is `master`; consider
+  renaming to `main` before publishing.
+- Live upstream source.7z (downloaded 2026-08-29) matches the pinned sha256;
+  archive is dated newer than 11/9/2025 but core files are identical.
+- .app niceties not done: Dock-drop file-open verification, version string
   hardcoded 2025.11.9 in mkapp.sh.
 - Plain-X1 menu guards visually confirmed in the bundle build (no Boot
   Device/Keyboard, Display = Scanline only).

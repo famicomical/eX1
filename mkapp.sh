@@ -40,9 +40,26 @@ fi
 # --- bundle
 app=build/$name.app
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks"
 cp "$bin" "$app/Contents/MacOS/e$variant"
 cp "$icns" "$app/Contents/Resources/AppIcon.icns"
+
+# --- bundle SDL2: copy the linked dylib into Frameworks/ and repoint the
+# binary at it, so the .app runs on machines without MacPorts/Homebrew SDL2
+sdl_dylib=$(otool -L "$app/Contents/MacOS/e$variant" | awk '/libSDL2[^ ]*\.dylib/{print $1; exit}')
+if [ -n "$sdl_dylib" ] && [ -f "$sdl_dylib" ]; then
+	sdl_base=$(basename "$sdl_dylib")
+	cp "$sdl_dylib" "$app/Contents/Frameworks/$sdl_base"
+	chmod u+w "$app/Contents/Frameworks/$sdl_base"
+	install_name_tool -id "@executable_path/../Frameworks/$sdl_base" \
+		"$app/Contents/Frameworks/$sdl_base"
+	install_name_tool -change "$sdl_dylib" \
+		"@executable_path/../Frameworks/$sdl_base" \
+		"$app/Contents/MacOS/e$variant"
+	codesign --force -s - "$app/Contents/Frameworks/$sdl_base"
+else
+	echo "warning: could not locate SDL2 dylib to bundle ($sdl_dylib)" >&2
+fi
 
 cat > "$app/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

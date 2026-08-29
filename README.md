@@ -27,7 +27,7 @@ Builds three variants from the same tree:
 This repo tracks only the port; the machine cores come from upstream CSCP.
 
 ```sh
-git clone <this repo> && cd <repo>
+git clone https://github.com/famicomical/eX1.git && cd eX1
 ./fetch_upstream.sh                 # downloads + unpacks upstream CSCP sources
 make                                # -> build/ex1, build/ex1turbo, build/ex1turboz
 ```

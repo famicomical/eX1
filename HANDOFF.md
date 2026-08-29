@@ -11,7 +11,7 @@ and run with the full ImGui menu/status bar. Build is GREEN, repo is git-tracked
 ```sh
 make                # all three -> build/ex1, build/ex1turbo, build/ex1turboz
 make x1turbo        # one variant (x1 | x1turbo | x1turboz)
-make app            # -> build/eX1.app, eX1turbo.app, eX1turboZ.app (needs ImageMagick)
+make app            # -> build/eX1.app, eX1turbo.app, eX1turboZ.app
 make clean          # objects/binaries/bundles only — ROMs in build/ survive
 ```
 

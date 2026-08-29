@@ -14,21 +14,26 @@ Builds three variants from the same tree:
 | `ex1turbo` | eX1turbo.app | SHARP X1turbo |
 | `ex1turboz` | eX1turboZ.app | SHARP X1turboZ |
 
+## Requirements
+
+- macOS with the Xcode command-line tools (`xcode-select --install`)
+- SDL2 — `brew install sdl2` (or MacPorts: `port install libsdl2`)
+- a 7z extractor for the upstream download — `brew install sevenzip`
+  (or `port install 7zip`)
+- `curl`, `rsync`, `git` (all ship with macOS)
+
 ## Building
 
 This repo tracks only the port; the machine cores come from upstream CSCP.
 
 ```sh
-# prerequisites: Xcode command-line tools, SDL2, a 7z extractor
-brew install sdl2 sevenzip          # (MacPorts works too: port install libsdl2 7zip)
-
 git clone <this repo> && cd <repo>
 ./fetch_upstream.sh                 # downloads + unpacks upstream CSCP sources
 make                                # -> build/ex1, build/ex1turbo, build/ex1turboz
 ```
 
-Optional `.app` bundles (also needs ImageMagick for icon conversion —
-`brew install imagemagick`):
+Optional `.app` bundles (icons are prebuilt in `icons/`, no extra tools
+needed):
 
 ```sh
 make app                            # -> build/eX1.app, eX1turbo.app, eX1turboZ.app
@@ -91,8 +96,9 @@ adds is new code in its own directory.
   portability edits plus macOS app-bundle path handling. The exact diff
   against upstream is committed as `core-vs-upstream-20251109.patch`.
 - **`Makefile`**, **`mkapp.sh`**, **`fetch_upstream.sh`** (new) — clang/SDL2
-  build for the three variants, .app bundling (icons converted from the
-  upstream `.ico` resources), upstream source fetcher.
+  build for the three variants, .app bundling, upstream source fetcher. The
+  bundle icons (`icons/*.icns`, prebuilt) derive from the upstream `.ico`
+  resources, nearest-neighbor upscaled.
 
 More technical detail: [README_SDL_MAC.md](README_SDL_MAC.md) (OSD
 implementation notes) and [HANDOFF.md](HANDOFF.md) (development log).

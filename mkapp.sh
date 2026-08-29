@@ -3,8 +3,8 @@
 #
 #   ./mkapp.sh x1turbo        # -> build/eX1turbo.app
 #
-# Needs the binary already built (make <variant>), ImageMagick (`magick`,
-# for nearest-neighbor icon upscaling) and iconutil (ships with macOS).
+# Needs the binary already built (make <variant>). Icons come prebuilt from
+# icons/<variant>.icns; ImageMagick is only needed to regenerate them.
 # Bundled apps load ROMs and save config in the shared
 # ~/Library/Application Support/eX1/ (created on first run).
 set -e
@@ -22,13 +22,16 @@ bin=build/e$variant
 ico=src/res/$variant.ico
 [ -f "$bin" ] || { echo "$bin not built - run: make $variant" >&2; exit 1; }
 
-# --- icon: .ico (32x32) -> .icns, nearest-neighbor upscale to keep pixels crisp
-icns=build/icons/$variant.icns
-if [ ! -f "$icns" ] || [ "$ico" -nt "$icns" ]; then
-	command -v magick >/dev/null || { echo "ImageMagick required: brew install imagemagick" >&2; exit 1; }
+# --- icon: prebuilt icons/<variant>.icns is committed (derived from the
+# upstream 32x32 .ico, nearest-neighbor upscaled to keep pixels crisp).
+# Rebuilt from src/res/<variant>.ico only if absent (needs ImageMagick +
+# iconutil); delete icons/<variant>.icns to force a rebuild.
+icns=icons/$variant.icns
+if [ ! -f "$icns" ]; then
+	command -v magick >/dev/null || { echo "ImageMagick required to regenerate $icns: brew install imagemagick" >&2; exit 1; }
 	iconset=build/icons/$variant.iconset
 	rm -rf "$iconset"
-	mkdir -p "$iconset"
+	mkdir -p "$iconset" icons
 	for s in 16 32 128 256 512; do
 		d=$((s * 2))
 		magick "$ico" -filter point -resize ${s}x${s} "$iconset/icon_${s}x${s}.png"

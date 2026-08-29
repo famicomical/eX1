@@ -111,7 +111,7 @@ IMGUI_OBJS := $(patsubst $(SRC)/%.cpp,$(BUILD)/imgui-obj/%.o,$(IMGUI_SRCS))
 .PHONY: all clean app $(VARIANTS)
 all: $(VARIANTS)
 
-# .app bundles (see mkapp.sh; needs ImageMagick for icon conversion)
+# .app bundles (see mkapp.sh; icons prebuilt in icons/)
 app: all
 	./mkapp.sh x1
 	./mkapp.sh x1turbo

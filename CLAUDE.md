@@ -12,7 +12,7 @@ macOS/SDL2 port of the Sharp X1turbo emulator from the Common Source Code Projec
 brew install sdl2          # one-time prerequisite
 make                       # all three variants -> build/ex1, build/ex1turbo, build/ex1turboz
 make x1turbo               # single variant (x1 | x1turbo | x1turboz)
-make app                   # wrap each binary into build/<name>.app (needs ImageMagick; see mkapp.sh)
+make app                   # wrap each binary into build/<name>.app (icons prebuilt in icons/; see mkapp.sh)
 make clean                 # remove objects + binaries only; ROMs in build/ survive
 cd build && ./ex1turbo     # ROMs must be in the CWD (build/ already has them)
 ./ex1turbo disk.d88        # boot with floppy in drive 0; drag-drop also mounts files

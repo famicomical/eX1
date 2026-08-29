@@ -9,6 +9,12 @@
 #include "../fileio.h"
 #include "osd.h"
 #include "gui.h"
+#include <unistd.h>
+#include <cerrno>
+#include <cstring>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 
 int osd_sdl_scancode_to_vk(int sc);
 
@@ -178,6 +184,7 @@ int main(int argc, char* argv[])
 
 	// initialize the ImGui front-end and make room for menu + status bars
 	gui_init(osd->get_window(), osd->get_renderer(), emu);
+	gui_rom_check();	// arm the missing-ROM overlay if no IPL image exists
 	if(osd->get_window() != NULL) {
 		SDL_SetWindowSize(osd->get_window(), WINDOW_WIDTH_ASPECT, WINDOW_HEIGHT_ASPECT + 24 + 26);
 	}
@@ -227,6 +234,9 @@ int main(int argc, char* argv[])
 		if(osd->request_terminate) {
 			running = false;
 		}
+		if(gui_restart_requested()) {
+			running = false;
+		}
 		if(!running) {
 			break;
 		}
@@ -270,9 +280,25 @@ int main(int argc, char* argv[])
 
 	// save config and shut down
 	save_config(create_local_path(_T("%s.ini"), _T(CONFIG_NAME)));
+	bool restart = gui_restart_requested();
 	gui_shutdown();
 	delete emu;
 	emu = NULL;
 	SDL_Quit();
+
+	// missing-ROM screen requested a restart: re-exec ourselves so the VM
+	// reloads ROMs from scratch (they are only read at VM construction)
+	if(restart) {
+#if defined(__APPLE__)
+		char exe_path[_MAX_PATH];
+		uint32_t exe_size = _MAX_PATH;
+		if(_NSGetExecutablePath(exe_path, &exe_size) == 0) {
+			execv(exe_path, argv);
+		}
+#endif
+		execv(argv[0], argv);
+		fprintf(stderr, "restart failed: %s\n", strerror(errno));
+		return 1;
+	}
 	return 0;
 }

@@ -21,4 +21,10 @@ bool gui_want_keyboard();			// true while ImGui is capturing the keyboard
 gui_viewport_t gui_build();
 void gui_render();					// ImGui::Render + draw
 
+// missing-ROM screen: call gui_rom_check() once after gui_init to arm the
+// overlay if no usable IPL image exists; gui_restart_requested() goes true
+// when the user clicks Restart there (caller re-execs the process)
+void gui_rom_check();
+bool gui_restart_requested();
+
 #endif // _SDL_GUI_H_

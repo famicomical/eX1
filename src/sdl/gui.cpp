@@ -8,9 +8,12 @@
 #include "imgui/imgui_impl_sdlrenderer2.h"
 #include "../emu.h"
 #include "../config.h"
+#include "../fileio.h"
 #include "osd.h"
 #include <string>
 #include <cstdio>
+#include <cstdlib>
+#include <sys/stat.h>
 
 static SDL_Window*   g_window   = NULL;
 static SDL_Renderer* g_renderer = NULL;
@@ -137,6 +140,138 @@ void gui_process_event(const SDL_Event* ev)
 bool gui_want_keyboard()
 {
 	return ImGui::GetIO().WantCaptureKeyboard;
+}
+
+// ----------------------------------------------------------------------------
+// missing-ROM screen
+// ----------------------------------------------------------------------------
+// Shown when no usable IPL image exists at startup (the VM still runs, but
+// boots nothing). Lists the expected ROM files, opens the ROM folder, and
+// offers a Restart once the user has copied them in (ROMs are only loaded
+// at VM construction, so a process restart is the reliable reload).
+
+static bool g_rom_missing = false;
+static bool g_rom_restart = false;
+
+static bool rom_file_exists(const _TCHAR* name)
+{
+	return FILEIO::IsFileExisting(create_local_path(name));
+}
+
+static long rom_file_size(const _TCHAR* name)
+{
+	struct stat st;
+	if(stat(create_local_path(name), &st) == 0) {
+		return (long)st.st_size;
+	}
+	return -1;
+}
+
+// a usable IPL is the variant-specific image, or an IPL.ROM of the size this
+// machine actually reads (memory.cpp loads IPL_ROM_FILE_SIZE bytes blindly, so
+// e.g. a 32KB turbo IPL.ROM "loads" on a plain X1 but boots garbage)
+static bool ipl_usable()
+{
+	if(rom_file_exists(IPL_ROM_FILE_NAME)) {
+		return true;
+	}
+	return rom_file_size(_T("IPL.ROM")) == IPL_ROM_FILE_SIZE;
+}
+
+void gui_rom_check()
+{
+	g_rom_missing = !ipl_usable();
+}
+
+bool gui_restart_requested()
+{
+	return g_rom_restart;
+}
+
+static void rom_row(bool found, const char* files, const char* note)
+{
+	ImGui::TextColored(found ? ImVec4(0.35f, 0.85f, 0.35f, 1.0f) : ImVec4(0.90f, 0.45f, 0.30f, 1.0f),
+	                   found ? "[ ok ]" : "[ -- ]");
+	ImGui::SameLine();
+	ImGui::TextUnformatted(files);
+	ImGui::SameLine();
+	ImGui::TextDisabled("%s", note);
+}
+
+static void rom_screen()
+{
+	if(!g_rom_missing) {
+		return;
+	}
+	// re-scan the ROM dir once a second
+	static Uint32 last_poll = 0;
+	static bool scanned = false;
+	static bool have_ipl = false, have_fnt8 = false, have_fnt16 = false, have_kanji = false;
+	static long ipl_rom_size = -1;
+	Uint32 now = SDL_GetTicks();
+	if(!scanned || now - last_poll >= 1000) {
+		last_poll = now;
+		scanned = true;
+		have_ipl   = ipl_usable();
+		have_fnt8  = rom_file_exists(_T("FNT0808.X1")) || rom_file_exists(_T("ANK8.ROM"));
+		have_fnt16 = rom_file_exists(_T("FNT0816.X1")) || rom_file_exists(_T("ANK16.ROM"));
+		have_kanji = rom_file_exists(_T("KANJI.ROM")) || rom_file_exists(_T("FNT1616.X1"));
+		ipl_rom_size = rom_file_size(_T("IPL.ROM"));
+	}
+
+	ImGuiViewport* vp = ImGui::GetMainViewport();
+	ImGui::SetNextWindowPos(ImVec2(vp->Pos.x + vp->Size.x * 0.5f, vp->Pos.y + vp->Size.y * 0.5f),
+	                        ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+	ImGui::Begin("ROM files required", NULL,
+	             ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
+	             ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove |
+	             ImGuiWindowFlags_NoSavedSettings);
+
+	ImGui::TextUnformatted("The " DEVICE_NAME " needs its ROM images to start.");
+	ImGui::TextUnformatted("ROMs are copyrighted and not included - copy your own dumps into:");
+	ImGui::Spacing();
+	ImGui::PushTextWrapPos(ImGui::GetFontSize() * 38.0f);
+	ImGui::TextUnformatted(get_application_path());
+	ImGui::PopTextWrapPos();
+	ImGui::SameLine();
+	if(ImGui::SmallButton("Open Folder")) {
+		std::string cmd = "open \"";
+		cmd += get_application_path();
+		cmd += "\"";
+		system(cmd.c_str());
+	}
+	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::Spacing();
+	rom_row(have_ipl, IPL_ROM_FILE_NAME " or IPL.ROM", "(IPL, required to boot)");
+	rom_row(have_fnt8, "FNT0808.X1 or ANK8.ROM", "(8x8 font)");
+	rom_row(have_fnt16, "FNT0816.X1 or ANK16.ROM", "(8x16 font, text display)");
+	rom_row(have_kanji, "KANJI.ROM or FNT1616.X1", "(kanji font, optional)");
+	if(!have_ipl && ipl_rom_size >= 0 && ipl_rom_size != IPL_ROM_FILE_SIZE) {
+		ImGui::Spacing();
+		ImGui::TextColored(ImVec4(0.95f, 0.80f, 0.30f, 1.0f),
+		                   "IPL.ROM found but it is %ld bytes; this machine needs %d bytes.\n"
+		                   "It is probably an IPL for a different X1 model.",
+		                   ipl_rom_size, (int)IPL_ROM_FILE_SIZE);
+	}
+	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::Spacing();
+	if(have_ipl) {
+		ImGui::TextColored(ImVec4(0.35f, 0.85f, 0.35f, 1.0f), "IPL found - press Restart to boot.");
+	} else {
+		ImGui::TextDisabled("Waiting for ROM files... (rescans every second)");
+	}
+	if(ImGui::Button("Restart")) {
+		g_rom_restart = true;
+	}
+	ImGui::SameLine();
+	if(ImGui::Button("Quit")) {
+		SDL_Event ev;
+		ev.type = SDL_QUIT;
+		SDL_PushEvent(&ev);
+	}
+	ImGui::End();
 }
 
 // ----------------------------------------------------------------------------
@@ -577,6 +712,7 @@ gui_viewport_t gui_build()
 	}
 
 	status_bar();
+	rom_screen();
 
 	// emulator viewport = area between menu bar and status bar
 	ImGuiViewport* vp = ImGui::GetMainViewport();

@@ -81,8 +81,7 @@ Headless verification: `EX1_AUTOSHOT=/tmp/x.bmp ./ex1turbo` (framebuffer after
 
 ## Known rough edges / possible next steps
 
-- GitHub repo not yet created/pushed (no remote). Branch is `master`; consider
-  renaming to `main` before publishing.
+- Published: https://github.com/famicomical/eX1 (public, branch `main`).
 - Live upstream source.7z (downloaded 2026-08-29) matches the pinned sha256;
   archive is dated newer than 11/9/2025 but core files are identical.
 - .app niceties not done: Dock-drop file-open verification, version string

@@ -169,3 +169,287 @@
  	bool is_tape_playing(int drv);
  	bool is_tape_recording(int drv);
  	int get_tape_position(int drv);
+--- a/src/vm/disk.h
++++ b/src/vm/disk.h
+@@ -87,6 +87,9 @@
+ 	// cpdread image decoder (dsk)
+ 	bool cpdread_to_d88(FILEIO *fio);
+ 	
++	// hxc hfe image decoder (hfe)
++	bool hfe_to_d88(FILEIO *fio);
++	
+ 	// nfd r0/r1 image decoder (nfd)
+ 	bool nfdr0_to_d88(FILEIO *fio);
+ 	bool nfdr1_to_d88(FILEIO *fio);
+--- a/src/vm/disk.cpp
++++ b/src/vm/disk.cpp
+@@ -207,6 +207,16 @@
+ 			// cpdread image
+ 			try {
+ 				if(cpdread_to_d88(fio)) {
++					inserted = changed = true;
++					my_stprintf_s(dest_path, _MAX_PATH, _T("%s.D88"), file_path);
++				}
++			} catch(...) {
++				// failed to convert the disk image
++			}
++		} else if(check_file_extension(file_path, _T(".hfe"))) {
++			// hxc floppy emulator image
++			try {
++				if(hfe_to_d88(fio)) {
+ 					inserted = changed = true;
+ 					my_stprintf_s(dest_path, _MAX_PATH, _T("%s.D88"), file_path);
+ 				}
+@@ -2468,6 +2478,252 @@
+ 		}
+ 	}
+ 	d88_hdr.type = (total < (368640 + 655360) / 2) ? MEDIA_TYPE_2D : (total < (737280 + 1228800) / 2) ? MEDIA_TYPE_2DD : MEDIA_TYPE_2HD;
++	d88_hdr.size(trkptr);
++	memcpy(buffer, &d88_hdr, sizeof(d88_hdr_t));
++	return true;
++}
++
++// hxc hfe (v1/v3) bitstream image decoder
++
++#define HFE_MAX_CELLS	0x80000	// 1Mbps at 300rpm = 400000 cells
++#define HFE_CELL_WEAK	2
++
++static uint8_t hfe_cells[HFE_MAX_CELLS];
++static uint8_t hfe_track_data[0x10000];
++static uint8_t hfe_track_mask[0x10000];
++
++static uint8_t hfe_mfm_byte(int pos, int ncells, uint8_t *mask)
++{
++	// data bits are the odd cells of each 16-cell mfm byte; *mask gets a bit per weak cell
++	uint8_t val = 0;
++	*mask = 0;
++	for(int i = 0; i < 8; i++) {
++		uint8_t c = hfe_cells[(pos + 1 + 2 * i) % ncells];
++		if(c == HFE_CELL_WEAK) {
++			*mask |= 0x80 >> i;
++			c = rand() & 1;
++		}
++		val = (val << 1) | c;
++	}
++	return val;
++}
++
++static bool hfe_is_sync(int pos, int ncells)
++{
++	// 0x4489 = 0100 0100 1000 1001
++	static const uint8_t pat[16] = {0,1,0,0, 0,1,0,0, 1,0,0,0, 1,0,0,1};
++	for(int i = 0; i < 16; i++) {
++		if(hfe_cells[(pos + i) % ncells] != pat[i]) {
++			return false;
++		}
++	}
++	return true;
++}
++
++static uint16_t hfe_crc(uint16_t crc, uint8_t data)
++{
++	return (uint16_t)((crc << 8) ^ crc_table[(uint8_t)(crc >> 8) ^ data]);
++}
++
++bool DISK::hfe_to_d88(FILEIO *fio)
++{
++	int image_size = fio->FileLength();
++	if(image_size < 0x400 || image_size > DISK_BUFFER_SIZE) {
++		return false;
++	}
++	fio->Fseek(0, FILEIO_SEEK_SET);
++	fio->Fread(tmp_buffer, image_size, 1);
++	
++	bool v3;
++	if(memcmp(tmp_buffer, "HXCHFEV3", 8) == 0) {
++		v3 = true;
++	} else if(memcmp(tmp_buffer, "HXCPICFE", 8) == 0) {
++		v3 = false;
++	} else {
++		return false;
++	}
++	int ntracks = tmp_buffer[9];
++	int nsides = tmp_buffer[10];
++	int bitrate = tmp_buffer[12] | (tmp_buffer[13] << 8);
++	int lut = (tmp_buffer[18] | (tmp_buffer[19] << 8)) * 512;
++	if(ntracks > 82) ntracks = 82;
++	if(nsides > 2) nsides = 2;
++	if(lut + ntracks * 4 > image_size) {
++		return false;
++	}
++	
++	// create d88 header
++	d88_hdr_t d88_hdr;
++	d88_sct_t d88_sct;
++	
++	memset(&d88_hdr, 0, sizeof(d88_hdr_t));
++	my_strcpy_s(d88_hdr.title, sizeof(d88_hdr.title), "HXCHFE");
++	d88_hdr.protect = 0x10; // read-only: no hfe writer
++	d88_hdr.type = (ntracks > 42) ? ((bitrate >= 500) ? MEDIA_TYPE_2HD : MEDIA_TYPE_2DD) : MEDIA_TYPE_2D;
++	
++	file_size.d = 0;
++	COPYBUFFER(&d88_hdr, sizeof(d88_hdr_t));
++	
++	int trkptr = sizeof(d88_hdr_t);
++	
++	for(int track = 0; track < ntracks; track++) {
++		int offset = (tmp_buffer[lut + track * 4 + 0] | (tmp_buffer[lut + track * 4 + 1] << 8)) * 512;
++		int length = (tmp_buffer[lut + track * 4 + 2] | (tmp_buffer[lut + track * 4 + 3] << 8));
++		if(offset + length > image_size || length == 0) {
++			continue;
++		}
++		for(int side = 0; side < nsides; side++) {
++			// side streams are interleaved in 256-byte halves of each 512-byte block, bits lsb first
++			int ncells = 0, index = 0, skip = 0;
++			for(int p = 0; p < length && ncells + 8 <= HFE_MAX_CELLS; p++) {
++				if((p & 0x100) != (side << 8)) {
++					continue;
++				}
++				uint8_t b = tmp_buffer[offset + p];
++				if(v3) {
++					uint8_t rb = 0;
++					for(int i = 0; i < 8; i++) rb |= ((b >> i) & 1) << (7 - i);
++					if(skip == -1) { skip = rb; continue; } // operand of previous SKIPBITS
++					if(skip == -2) { skip = 0; continue; }  // operand of previous SETBITRATE
++					if(rb == 0xf0) continue;                  // NOP
++					if(rb == 0xf1) { index = ncells; continue; } // SETINDEX
++					if(rb == 0xf2) { skip = -2; continue; }   // SETBITRATE: ignore, one track = one revolution
++					if(rb == 0xf3) { skip = -1; continue; }   // SKIPBITS
++					if(rb == 0xf4) {                          // RAND
++						for(int i = 0; i < 8; i++) hfe_cells[ncells++] = HFE_CELL_WEAK;
++						continue;
++					}
++				}
++				for(int i = skip; i < 8; i++) {
++					hfe_cells[ncells++] = (b >> i) & 1;
++				}
++				skip = 0;
++			}
++			if(ncells < 1000) {
++				continue;
++			}
++			// shortcut: only long RAND runs (erased/no-flux areas, >= 3 opcodes) stay random per read;
++			// short runs are marginal cells and keep a fixed random value, since loaders expect them
++			// mostly stable. Upgrade to per-cell flip probability or multi-revolution flux if a title fails.
++			for(int p = 0; p < ncells; ) {
++				if(hfe_cells[p] != HFE_CELL_WEAK) {
++					p++;
++					continue;
++				}
++				int q = p;
++				while(q < ncells && hfe_cells[q] == HFE_CELL_WEAK) q++;
++				if(q - p < 24) {
++					for(int i = p; i < q; i++) hfe_cells[i] = rand() & 1;
++				}
++				p = q;
++			}
++			
++			// scan one revolution from the index for id/data fields
++			int nsec = 0, data_total = 0, mask_num = 0;
++			d88_sct_t secs[64];
++			int sec_index[64];
++			int p = index, end = index + ncells;
++			
++			while(p < end && nsec < 64) {
++				if(!hfe_is_sync(p, ncells)) {
++					p++;
++					continue;
++				}
++				while(hfe_is_sync(p, ncells)) p += 16;
++				uint8_t weak = 0;
++				if(hfe_mfm_byte(p, ncells, &weak) != 0xfe) {
++					p += 16;
++					continue;
++				}
++				// id field
++				uint16_t crc = 0xffff;
++				for(int i = 0; i < 3; i++) crc = hfe_crc(crc, 0xa1);
++				crc = hfe_crc(crc, 0xfe);
++				uint8_t id[6];
++				for(int i = 0; i < 6; i++) {
++					id[i] = hfe_mfm_byte(p + 16 * (i + 1), ncells, &weak);
++					if(i < 4) crc = hfe_crc(crc, id[i]);
++				}
++				p += 16 * 7;
++				
++				memset(&d88_sct, 0, sizeof(d88_sct_t));
++				d88_sct.c = id[0];
++				d88_sct.h = id[1];
++				d88_sct.r = id[2];
++				d88_sct.n = id[3];
++				d88_sct.stat = (crc != ((id[4] << 8) | id[5])) ? 0xa0 : 0xf0; // id crc error / data mark missing
++				
++				// data field: sync within gap2 (22) + sync (12) + slack
++				int size = secsize[id[3] & 3];
++				int limit = p + 16 * 64;
++				int q = p;
++				while(q < limit && !hfe_is_sync(q, ncells)) q++;
++				if(q < limit && data_total + size <= (int)sizeof(hfe_track_data)) {
++					while(hfe_is_sync(q, ncells)) q += 16;
++					uint8_t am = hfe_mfm_byte(q, ncells, &weak);
++					if(am == 0xfb || am == 0xf8) {
++						crc = 0xffff;
++						for(int i = 0; i < 3; i++) crc = hfe_crc(crc, 0xa1);
++						crc = hfe_crc(crc, am);
++						q += 16;
++						bool any_weak = false;
++						for(int i = 0; i < size; i++) {
++							uint8_t d = hfe_mfm_byte(q + 16 * i, ncells, &weak);
++							hfe_track_data[data_total + i] = d;
++							hfe_track_mask[data_total + i] = weak;
++							any_weak |= (weak != 0);
++							crc = hfe_crc(crc, d);
++						}
++						uint8_t c1 = hfe_mfm_byte(q + 16 * size, ncells, &weak);
++						uint8_t c2 = hfe_mfm_byte(q + 16 * (size + 1), ncells, &weak);
++						d88_sct.del = (am == 0xf8) ? 0x10 : 0;
++						if(d88_sct.stat == 0xf0) {
++							d88_sct.stat = (crc != ((c1 << 8) | c2)) ? 0xb0 : d88_sct.del;
++						}
++						d88_sct.size(size);
++						sec_index[nsec] = any_weak ? nsec : -1;
++						if(any_weak) mask_num++;
++						data_total += size;
++						p = q; // keep scanning inside the data field: oversize sectors may nest other ids
++					}
++				}
++				secs[nsec++] = d88_sct;
++			}
++			if(nsec == 0) {
++				continue;
++			}
++			
++			// copy to d88
++			int trkside = track * 2 + side;
++			if(trkside >= 164) {
++				continue;
++			}
++			d88_hdr.trkptr(trkside, trkptr);
++			int pos = 0;
++			for(int i = 0; i < nsec; i++) {
++				secs[i].nsec(nsec);
++				COPYBUFFER(&secs[i], sizeof(d88_sct_t));
++				COPYBUFFER(hfe_track_data + pos, secs[i].size());
++				trkptr += sizeof(d88_sct_t) + secs[i].size();
++				pos += secs[i].size();
++			}
++			// weak bits: unstable-mask block appended to the track (see get_unstable_sector)
++			if(mask_num > 0) {
++				pos = 0;
++				for(int i = 0; i < nsec; i++) {
++					if(sec_index[i] >= 0) {
++						d88_sct = secs[i];
++						d88_sct.nsec(mask_num);
++						d88_sct.rsrv[0] = i;
++						COPYBUFFER(&d88_sct, sizeof(d88_sct_t));
++						COPYBUFFER(hfe_track_mask + pos, secs[i].size());
++						trkptr += sizeof(d88_sct_t) + secs[i].size();
++					}
++					pos += secs[i].size();
++				}
++			}
++		}
++	}
+ 	d88_hdr.size(trkptr);
+ 	memcpy(buffer, &d88_hdr, sizeof(d88_hdr_t));
+ 	return true;

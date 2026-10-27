@@ -95,6 +95,7 @@ cat > "$app/Contents/Info.plist" <<EOF
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>d88</string>
+				<string>hfe</string>
 			</array>
 		</dict>
 		<dict>

@@ -115,6 +115,7 @@ static void open_any_file(const _TCHAR* path)
 	   check_file_extension(path, _T(".imd")) ||
 	   check_file_extension(path, _T(".dsk")) ||
 	   check_file_extension(path, _T(".nfd")) ||
+	   check_file_extension(path, _T(".hfe")) ||
 	   check_file_extension(path, _T(".fdi")) ||
 	   check_file_extension(path, _T(".hdm")) ||
 	   check_file_extension(path, _T(".hd5")) ||
@@ -196,6 +197,8 @@ int main(int argc, char* argv[])
 
 	// optional auto-screenshot for headless verification
 	const char* autoshot = getenv("EX1_AUTOSHOT");
+	const char* autoshot_frames_env = getenv("EX1_AUTOSHOT_FRAMES");
+	int autoshot_frames = autoshot_frames_env ? atoi(autoshot_frames_env) : 300;
 	int frame_count = 0;
 
 	// main loop (timing modeled on win32/winmain.cpp)
@@ -243,7 +246,7 @@ int main(int argc, char* argv[])
 
 		// drive the machine
 		emu->run();
-		if(autoshot != NULL && ++frame_count == 300) {
+		if(autoshot != NULL && ++frame_count == autoshot_frames) {
 			g_capture_path = autoshot;
 			render_frame(emu, osd);
 			running = false;

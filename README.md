@@ -78,6 +78,10 @@ cd build && ./ex1turbo              # boots the IPL ("looking for a program from
 
 - Drag-and-drop a disk/tape image onto the window to mount it (a multi-bank
   `.d88` auto-mounts bank 1 into FD1).
+- HxC `.hfe` bitstream images (v1 and v3) are supported read-only, in
+  addition to the upstream formats (`.d88`, `.2d`, `.td0`, `.dsk`, ...). The
+  MFM bitstream is decoded at mount time, keeping bad-CRC and oversized
+  sectors and HFEv3 weak-bit (RAND) regions, so copy-protected dumps load.
 - The menu bar mirrors the Windows build: Control (reset, CPU speed,
   save/load state), FD0–FD3, CMT, HD, Device, Sound, Screen.
 - File dialogs are native macOS panels.
